@@ -2,7 +2,7 @@
 
 Usage:
     python vision/crop_ui.py
-    # then open http://localhost:8080
+    # then open http://localhost:8190
 
 Workflow:
     1. Upload an example image.
@@ -148,4 +148,4 @@ class CropApp:
 
 
 CropApp()
-ui.run(title="ROI Cropper", reload=False)
+ui.run(title="ROI Cropper", reload=False, port=8190)
