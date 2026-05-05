@@ -25,11 +25,16 @@ from vision.crop_to_roi import iter_images
 _IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 3)
 _IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 3)
 
+# Wong's colorblind-safe palette (https://www.nature.com/articles/nmeth.1618)
 _PALETTE = np.array([
-    [0, 0, 0],
-    [220, 50, 50], [50, 220, 50], [50, 50, 220],
-    [220, 220, 50], [220, 50, 220], [50, 220, 220],
-    [180, 120, 60], [120, 60, 180],
+    [0, 0, 0],          # 0: background (no tint)
+    [230, 159, 0],      # 1: orange
+    [86, 180, 233],     # 2: sky blue
+    [0, 158, 115],      # 3: bluish green
+    [240, 228, 66],     # 4: yellow
+    [0, 114, 178],      # 5: blue
+    [213, 94, 0],       # 6: vermillion
+    [204, 121, 167],    # 7: reddish purple
 ], dtype=np.uint8)
 
 
