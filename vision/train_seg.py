@@ -156,41 +156,41 @@ def main(argv: list[str] | None = None) -> int:
                 train_loss += loss.item() * x.size(0)
                 log.info("epoch %d/%d  batch %d/%d  loss=%.4f", epoch, args.epochs, i, n_batches, loss.item())
             train_loss /= max(1, len(train_ds))
+
+            # validation
+            model.eval()
+            per_class = [[] for _ in range(full.num_classes)]
+            with torch.no_grad():
+                for x, y in val_loader:
+                    x, y = x.to(args.device), y.to(args.device)
+                    pred = model(x).argmax(1)
+                    for ip, iy in zip(pred, y):
+                        for c, v in enumerate(per_class_iou(ip, iy, full.num_classes)):
+                            if v == v:  # not NaN
+                                per_class[c].append(v)
+            means = [sum(c) / len(c) if c else 0.0 for c in per_class]
+            miou_fg = sum(means[1:]) / max(1, len(means) - 1)
+            log.info(
+                "epoch %d/%d  train_loss=%.4f  mIoU(fg)=%.4f  per-class=%s",
+                epoch, args.epochs, train_loss, miou_fg,
+                ", ".join(f"{n}={v:.3f}" for n, v in zip(full.class_names, means)),
+            )
+            history.append({"epoch": epoch, "train_loss": train_loss, "miou_fg": miou_fg, "per_class": means})
+
+            if miou_fg > best_miou:
+                best_miou = miou_fg
+                torch.save({
+                    "model_state": model.state_dict(),
+                    "encoder": args.encoder,
+                    "num_classes": full.num_classes,
+                    "class_names": full.class_names,
+                    "epoch": epoch,
+                    "miou_fg": miou_fg,
+                }, args.out / "best.pt")
+                log.info("saved best.pt (mIoU fg = %.4f)", miou_fg)
     except Exception:
         log.exception("training crashed")
         raise
-
-        # validation
-        model.eval()
-        per_class = [[] for _ in range(full.num_classes)]
-        with torch.no_grad():
-            for x, y in val_loader:
-                x, y = x.to(args.device), y.to(args.device)
-                pred = model(x).argmax(1)
-                for ip, iy in zip(pred, y):
-                    for c, v in enumerate(per_class_iou(ip, iy, full.num_classes)):
-                        if v == v:  # not NaN
-                            per_class[c].append(v)
-        means = [sum(c) / len(c) if c else 0.0 for c in per_class]
-        miou_fg = sum(means[1:]) / max(1, len(means) - 1)
-        log.info(
-            "epoch %d/%d  loss=%.4f  mIoU(fg)=%.4f  per-class=%s",
-            epoch, args.epochs, train_loss, miou_fg,
-            ", ".join(f"{n}={v:.3f}" for n, v in zip(full.class_names, means)),
-        )
-        history.append({"epoch": epoch, "train_loss": train_loss, "miou_fg": miou_fg, "per_class": means})
-
-        if miou_fg > best_miou:
-            best_miou = miou_fg
-            torch.save({
-                "model_state": model.state_dict(),
-                "encoder": args.encoder,
-                "num_classes": full.num_classes,
-                "class_names": full.class_names,
-                "epoch": epoch,
-                "miou_fg": miou_fg,
-            }, args.out / "best.pt")
-            log.info("saved best.pt (mIoU fg = %.4f)", miou_fg)
 
     (args.out / "history.json").write_text(json.dumps(history, indent=2))
     log.info("done. best val mIoU(fg) = %.4f -> %s/best.pt", best_miou, args.out)
