@@ -25,6 +25,7 @@ from nicegui import events, ui
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from vision.crop_to_roi import Roi, crop, crop_directory
+from vision.remap_dataset import crop_originals, remap_masks_dir
 
 
 def _png_data_url(img: np.ndarray) -> str:
@@ -100,6 +101,32 @@ class CropApp:
 
             ui.button("Crop all", on_click=self._run).props("color=primary")
             self.status = ui.label("").classes("text-sm")
+
+            with ui.expansion("Remap existing labels to new ROI", icon="layers").classes("w-full"):
+                ui.label(
+                    "If you've already labeled images at an old ROI, point this "
+                    "at the originals + old PNG masks and the new ROI you set "
+                    "above will be applied to both."
+                ).classes("text-xs text-gray-600")
+                with ui.row().classes("w-full items-end gap-2"):
+                    self.old_roi_input = ui.input("Old ROI (x,y,w,h)", value="817,351,855,831").classes("flex-grow")
+                    ui.button("Read from output", on_click=self._read_roi_sidecar).props("flat").tooltip(
+                        "Load old ROI from <output_dir>/roi.json if present"
+                    )
+                with ui.row().classes("w-full items-end gap-2"):
+                    self.originals_dir = ui.input("Originals directory").classes("flex-grow")
+                    ui.button("Browse", on_click=lambda: self._pick_folder(self.originals_dir)).props("flat")
+                with ui.row().classes("w-full items-end gap-2"):
+                    self.old_masks_dir = ui.input("Old masks directory (PNGs)").classes("flex-grow")
+                    ui.button("Browse", on_click=lambda: self._pick_folder(self.old_masks_dir)).props("flat")
+                with ui.row().classes("w-full items-end gap-2"):
+                    self.new_masks_dir = ui.input("New masks directory").classes("flex-grow")
+                    ui.button(
+                        "Browse",
+                        on_click=lambda: self._pick_folder(self.new_masks_dir, allow_create=True),
+                    ).props("flat")
+                ui.button("Remap masks", on_click=self._run_remap).props("color=secondary")
+                self.remap_status = ui.label("").classes("text-sm")
 
     # --- example image ---------------------------------------------------
 
@@ -197,6 +224,59 @@ class CropApp:
         self.roi_label.text = f"ROI: x={r.x} y={r.y} w={r.w} h={r.h}"
         if self.example is not None:
             self.preview.set_source(_png_data_url(crop(self.example, r)))
+
+    # --- remap ----------------------------------------------------------
+
+    def _read_roi_sidecar(self) -> None:
+        out = Path(self.output_dir.value or "").expanduser()
+        sidecar = out / "roi.json"
+        if not sidecar.is_file():
+            ui.notify(f"No roi.json in {out}", type="warning")
+            return
+        import json as _json
+        try:
+            r = _json.loads(sidecar.read_text())["roi"]
+            self.old_roi_input.value = f"{r['x']},{r['y']},{r['w']},{r['h']}"
+            ui.notify("Loaded old ROI from sidecar", type="positive")
+        except (KeyError, ValueError) as exc:
+            ui.notify(f"Bad sidecar: {exc}", type="negative")
+
+    def _run_remap(self) -> None:
+        if self.roi is None:
+            ui.notify("Set the new ROI first (click on the example).", type="warning")
+            return
+        try:
+            old_roi = Roi.parse(self.old_roi_input.value)
+        except (ValueError, TypeError) as exc:
+            ui.notify(f"Bad old ROI: {exc}", type="negative")
+            return
+        originals = Path(self.originals_dir.value or "").expanduser()
+        if not originals.is_dir():
+            ui.notify(f"Originals not a directory: {originals}", type="negative")
+            return
+        old_masks = Path(self.old_masks_dir.value or "").expanduser()
+        new_masks = Path(self.new_masks_dir.value or "").expanduser()
+        if not old_masks.is_dir():
+            ui.notify(f"Old masks not a directory: {old_masks}", type="negative")
+            return
+
+        # also re-crop the originals to the new ROI into output_dir if set
+        out_images = Path(self.output_dir.value or "").expanduser()
+        try:
+            n_imgs = crop_originals(originals, self.roi, out_images) if out_images != Path() else 0
+            # peek first original for full-frame dims
+            first = next(iter(originals.rglob("*.jpg")), None) or next(iter(originals.rglob("*.png")), None)
+            if first is None:
+                ui.notify("No images found in originals", type="negative")
+                return
+            full = cv2.imread(str(first))
+            n_masks = remap_masks_dir(old_masks, new_masks, full.shape[:2], old_roi, self.roi)
+        except Exception as exc:
+            ui.notify(f"Remap failed: {exc}", type="negative")
+            return
+        msg = f"Remap done: {n_imgs} images -> {out_images}, {n_masks} masks -> {new_masks}"
+        self.remap_status.text = msg
+        ui.notify(msg, type="positive")
 
     # --- folder picker ---------------------------------------------------
 
