@@ -85,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, default=Path("runs/exp1"),
                    help="Run directory (default: ./runs/exp1)")
     p.add_argument("--epochs", type=int, default=50)
-    p.add_argument("--batch-size", type=int, default=4)
+    p.add_argument("--batch-size", type=int, default=1,
+                   help="Default 1 (safe for CPU). Bump to 4-8 on a GPU.")
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--val-split", type=float, default=0.2)
     p.add_argument("--encoder", default="resnet34")
