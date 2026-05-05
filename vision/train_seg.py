@@ -1,11 +1,23 @@
 """train_seg.py - train a U-Net on a Label Studio COCO segmentation export.
 
-    python vision/train_seg.py \\
-        --coco labels/result.json \\
-        --images labels/images/ \\
-        --out runs/exp1
+The default layout is::
 
-Saves the best (by foreground mIoU) checkpoint to <out>/best.pt.
+    AI_Test/
+        dataset/                  <-- unzip the Label Studio export here
+            result.json
+            images/
+                0001.jpg ...
+        runs/                     <-- training outputs land here
+
+With that layout, just run::
+
+    python -m vision.train_seg
+
+Override paths if your layout differs::
+
+    python -m vision.train_seg --data /elsewhere/my_export
+
+Saves the best (by foreground mIoU) checkpoint to ``<out>/best.pt``.
 """
 from __future__ import annotations
 
@@ -39,11 +51,36 @@ def per_class_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) ->
     return ious
 
 
+def resolve_paths(data: Path, coco: Path | None, images: Path | None) -> tuple[Path, Path]:
+    """Pick the COCO JSON and images dir for a dataset folder."""
+    if coco is None:
+        candidates = sorted(data.glob("*.json"))
+        if not candidates:
+            raise FileNotFoundError(
+                f"No .json found in {data}. Unzip the COCO export there, "
+                "or pass --coco explicitly."
+            )
+        # prefer 'result.json' if present; else first match
+        coco = next((c for c in candidates if c.name == "result.json"), candidates[0])
+    if images is None:
+        first = json.loads(coco.read_text())["images"][0]["file_name"]
+        if "/" in first or "\\" in first:
+            images = coco.parent
+        elif (coco.parent / "images").is_dir():
+            images = coco.parent / "images"
+        else:
+            images = coco.parent
+    return coco, images
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--coco", type=Path, required=True, help="COCO JSON export")
-    p.add_argument("--images", type=Path, required=True, help="Directory containing the images referenced by the JSON")
-    p.add_argument("--out", type=Path, required=True, help="Run directory (created if missing)")
+    p.add_argument("--data", type=Path, default=Path("dataset"),
+                   help="Folder containing result.json + images/ (default: ./dataset)")
+    p.add_argument("--coco", type=Path, help="Override: path to the COCO JSON")
+    p.add_argument("--images", type=Path, help="Override: directory the JSON file_names are relative to")
+    p.add_argument("--out", type=Path, default=Path("runs/exp1"),
+                   help="Run directory (default: ./runs/exp1)")
     p.add_argument("--epochs", type=int, default=50)
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--lr", type=float, default=1e-4)
@@ -57,6 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     random.seed(args.seed)
     torch.manual_seed(args.seed)
+
+    args.coco, args.images = resolve_paths(args.data, args.coco, args.images)
+    log.info("coco=%s images=%s out=%s", args.coco, args.images, args.out)
     args.out.mkdir(parents=True, exist_ok=True)
 
     # split image ids by random shuffle
