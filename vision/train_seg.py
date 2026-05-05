@@ -134,22 +134,30 @@ def main(argv: list[str] | None = None) -> int:
     dice_loss = smp.losses.DiceLoss(mode="multiclass")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
-    log.info("starting training: %d epochs, batch %d, device %s",
-             args.epochs, args.batch_size, args.device)
+    log.info("starting training: %d epochs, batch %d, device %s, image_shape=%s",
+             args.epochs, args.batch_size, args.device, tuple(train_ds[0][0].shape))
     best_miou = -1.0
     history = []
-    for epoch in range(1, args.epochs + 1):
-        model.train()
-        train_loss = 0.0
-        for x, y in train_loader:
-            x, y = x.to(args.device, non_blocking=True), y.to(args.device, non_blocking=True)
-            logits = model(x)
-            loss = ce_loss(logits, y) + dice_loss(logits, y)
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-            train_loss += loss.item() * x.size(0)
-        train_loss /= max(1, len(train_ds))
+    n_batches = max(1, (len(train_ds) + args.batch_size - 1) // args.batch_size)
+    try:
+        for epoch in range(1, args.epochs + 1):
+            model.train()
+            train_loss = 0.0
+            for i, (x, y) in enumerate(train_loader, 1):
+                if epoch == 1 and i == 1:
+                    log.info("first batch loaded: x=%s y=%s", tuple(x.shape), tuple(y.shape))
+                x, y = x.to(args.device, non_blocking=True), y.to(args.device, non_blocking=True)
+                logits = model(x)
+                loss = ce_loss(logits, y) + dice_loss(logits, y)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                train_loss += loss.item() * x.size(0)
+                log.info("epoch %d/%d  batch %d/%d  loss=%.4f", epoch, args.epochs, i, n_batches, loss.item())
+            train_loss /= max(1, len(train_ds))
+    except Exception:
+        log.exception("training crashed")
+        raise
 
         # validation
         model.eval()
