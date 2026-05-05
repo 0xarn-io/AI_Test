@@ -228,6 +228,12 @@ class CropApp:
         except (ValueError, NotADirectoryError) as exc:
             ui.notify(str(exc), type="negative")
             return
+        import json as _json
+        manifest = {
+            "roi": {"x": self.roi.x, "y": self.roi.y, "w": self.roi.w, "h": self.roi.h},
+            "source": str(src),
+        }
+        (dst / "roi.json").write_text(_json.dumps(manifest, indent=2))
         self.status.text = f"Done: {written} written, {skipped} skipped -> {dst}"
         ui.notify(self.status.text, type="positive")
 
