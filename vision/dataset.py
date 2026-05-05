@@ -52,10 +52,30 @@ class CocoSegDataset(Dataset):
     def __len__(self) -> int:
         return len(self.ids)
 
+    def _resolve_image(self, file_name: str) -> Path:
+        # 1. literal file_name relative to images_dir
+        p = self.images_dir / file_name
+        if p.is_file():
+            return p
+        # 2. basename in images_dir (handles Label Studio paths with ../../..)
+        base = Path(file_name).name
+        p = self.images_dir / base
+        if p.is_file():
+            return p
+        # 3. basename inside images_dir/images/ (when images_dir is the export root)
+        p = self.images_dir / "images" / base
+        if p.is_file():
+            return p
+        raise FileNotFoundError(
+            f"Could not find {base!r} under {self.images_dir} or its 'images/' subdir. "
+            "Re-export from Label Studio choosing 'COCO with Images', or copy the "
+            "JPEGs into dataset/images/ with names matching the JSON's file_name basenames."
+        )
+
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         img_id = self.ids[idx]
         info = self.coco.loadImgs([img_id])[0]
-        img_path = self.images_dir / info["file_name"]
+        img_path = self._resolve_image(info["file_name"])
         bgr = cv2.imread(str(img_path))
         if bgr is None:
             raise FileNotFoundError(img_path)
