@@ -57,8 +57,12 @@ class CropApp:
             with ui.row().classes("w-full gap-2"):
                 ui.button("Reset corners", on_click=self._reset).props("flat")
 
-            self.input_dir = ui.input("Input directory").classes("w-full")
-            self.output_dir = ui.input("Output directory").classes("w-full")
+            with ui.row().classes("w-full items-end gap-2"):
+                self.input_dir = ui.input("Input directory").classes("flex-grow")
+                ui.button("Browse", on_click=lambda: self._pick_folder(self.input_dir)).props("flat")
+            with ui.row().classes("w-full items-end gap-2"):
+                self.output_dir = ui.input("Output directory").classes("flex-grow")
+                ui.button("Browse", on_click=lambda: self._pick_folder(self.output_dir, allow_create=True)).props("flat")
             ui.checkbox("Recursive", value=True).bind_value(self, "recursive")
             ui.checkbox("Skip images smaller than ROI").bind_value(self, "skip_oversize")
 
@@ -125,6 +129,14 @@ class CropApp:
                 )
         self.image.content = marks + rect
 
+    async def _pick_folder(self, target: ui.input, allow_create: bool = False) -> None:
+        start = Path(target.value).expanduser() if target.value else Path.cwd()
+        if not start.is_dir():
+            start = Path.cwd()
+        chosen = await FolderPicker(start, allow_create=allow_create)
+        if chosen is not None:
+            target.value = str(chosen)
+
     def _run(self) -> None:
         if self.roi is None:
             ui.notify("Set the ROI first (two clicks on the example).", type="warning")
@@ -145,6 +157,74 @@ class CropApp:
             return
         self.status.text = f"Done: {written} written, {skipped} skipped -> {dst}"
         ui.notify(self.status.text, type="positive")
+
+
+class FolderPicker(ui.dialog):
+    """Server-side folder picker. ``await FolderPicker(start)`` returns a Path or None."""
+
+    def __init__(self, start: Path, allow_create: bool = False) -> None:
+        super().__init__()
+        self.path = start.resolve()
+        self.allow_create = allow_create
+        with self, ui.card().classes("w-[640px] max-w-[90vw]"):
+            self.path_label = ui.label().classes("font-mono text-sm break-all")
+            with ui.row().classes("gap-2"):
+                ui.button("Up", on_click=self._go_up).props("flat dense")
+                if allow_create:
+                    ui.button("New folder", on_click=self._new_folder).props("flat dense")
+            self.list_container = ui.column().classes("w-full max-h-80 overflow-auto gap-0")
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=lambda: self.submit(None)).props("flat")
+                ui.button("Select this folder", on_click=lambda: self.submit(self.path)).props("color=primary")
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self.path_label.text = str(self.path)
+        self.list_container.clear()
+        try:
+            entries = sorted(p for p in self.path.iterdir() if p.is_dir() and not p.name.startswith("."))
+        except PermissionError:
+            entries = []
+            with self.list_container:
+                ui.label("(permission denied)").classes("text-xs text-red-500")
+        with self.list_container:
+            for entry in entries:
+                ui.button(
+                    f"📁  {entry.name}",
+                    on_click=lambda _, p=entry: self._enter(p),
+                ).props("flat align=left").classes("w-full justify-start")
+
+    def _enter(self, p: Path) -> None:
+        self.path = p
+        self._refresh()
+
+    def _go_up(self) -> None:
+        if self.path.parent != self.path:
+            self.path = self.path.parent
+            self._refresh()
+
+    async def _new_folder(self) -> None:
+        name = await NamePrompt()
+        if not name:
+            return
+        try:
+            (self.path / name).mkdir(parents=False, exist_ok=False)
+        except OSError as exc:
+            ui.notify(f"Could not create: {exc}", type="negative")
+            return
+        self._refresh()
+
+
+class NamePrompt(ui.dialog):
+    """Single-line text prompt; ``await NamePrompt()`` returns str or None."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        with self, ui.card():
+            field = ui.input("Folder name").classes("w-64")
+            with ui.row().classes("justify-end gap-2"):
+                ui.button("Cancel", on_click=lambda: self.submit(None)).props("flat")
+                ui.button("Create", on_click=lambda: self.submit(field.value)).props("color=primary")
 
 
 CropApp()
