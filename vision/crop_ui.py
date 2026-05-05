@@ -104,9 +104,10 @@ class CropApp:
 
             with ui.row().classes("w-full items-end gap-2"):
                 self.rename_enabled = ui.checkbox("Rename output sequentially", value=False)
-                self.rename_prefix = ui.input("Prefix", value="img_").classes("w-32")
-                self.rename_pad = ui.number("Pad", value=4, min=1, format="%d").classes("w-20")
-                self.rename_start = ui.number("Start", value=1, min=0, format="%d").classes("w-20")
+                self.rename_prefix = ui.input("Prefix (optional)", value="").classes("w-40")
+                self.rename_pad = ui.number("Pad", value=4, min=1, format="%d").classes("w-20").tooltip(
+                    "Zero-pad width: 4 -> 0001, 0002, ...; 1 -> 1, 2, ..."
+                )
 
             ui.button("Crop all", on_click=self._run).props("color=primary")
             self.status = ui.label("").classes("text-sm")
@@ -250,11 +251,7 @@ class CropApp:
             return
         rename = None
         if self.rename_enabled.value:
-            rename = (
-                str(self.rename_prefix.value or ""),
-                int(self.rename_pad.value),
-                int(self.rename_start.value),
-            )
+            rename = (str(self.rename_prefix.value or ""), int(self.rename_pad.value), 1)
         try:
             written, skipped = crop_directory(
                 src, dst, self.roi,
