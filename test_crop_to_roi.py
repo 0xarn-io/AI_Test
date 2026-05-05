@@ -97,6 +97,19 @@ def test_crop_directory_errors_on_oversize_by_default(tmp_path: Path):
         crop_directory(src, dst, Roi(0, 0, 50, 50))
 
 
+def test_crop_directory_renames_sequentially(tmp_path: Path):
+    src = tmp_path / "in"
+    dst = tmp_path / "out"
+    _write_image(src / "zzz.jpg", (0, 0, 0))
+    _write_image(src / "aaa.jpg", (0, 0, 0))
+
+    written, skipped = crop_directory(
+        src, dst, Roi(0, 0, 50, 50), rename=("img_", 4, 1)
+    )
+    assert (written, skipped) == (2, 0)
+    assert sorted(p.name for p in dst.iterdir()) == ["img_0001.jpg", "img_0002.jpg"]
+
+
 def test_main_cli_with_explicit_roi(tmp_path: Path):
     src = tmp_path / "in"
     dst = tmp_path / "out"

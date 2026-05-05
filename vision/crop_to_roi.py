@@ -109,11 +109,14 @@ def crop_directory(
     recursive: bool = True,
     extensions: Iterable[str] = DEFAULT_EXTENSIONS,
     skip_oversize: bool = False,
+    rename: tuple[str, int, int] | None = None,
 ) -> tuple[int, int]:
     """Crop every image under src_root to roi and write to dst_root.
 
-    Preserves directory structure relative to src_root. Returns
-    ``(written, skipped)``.
+    By default preserves the source directory structure. If ``rename`` is
+    given as ``(prefix, pad, start)``, output files are flat and named
+    ``{prefix}{i:0{pad}d}{ext}`` where i counts up from ``start``.
+    Returns ``(written, skipped)``.
     """
     if not src_root.is_dir():
         raise NotADirectoryError(f"input is not a directory: {src_root}")
@@ -135,9 +138,13 @@ def crop_directory(
                 continue
             raise
 
-        rel = src.relative_to(src_root)
-        dst = dst_root / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
+        if rename is not None:
+            prefix, pad, start = rename
+            dst = dst_root / f"{prefix}{written + start:0{pad}d}{src.suffix.lower()}"
+        else:
+            rel = src.relative_to(src_root)
+            dst = dst_root / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(dst), out):
             log.warning("failed to write: %s", dst)
             skipped += 1
