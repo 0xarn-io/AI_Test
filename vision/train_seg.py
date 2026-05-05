@@ -90,7 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--val-split", type=float, default=0.2)
     p.add_argument("--encoder", default="resnet34")
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--num-workers", type=int, default=2)
+    p.add_argument("--num-workers", type=int, default=0,
+                   help="DataLoader workers. Keep 0 on Windows; raise on Linux for speed.")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = p.parse_args(argv)
 
@@ -133,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
     dice_loss = smp.losses.DiceLoss(mode="multiclass")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
+    log.info("starting training: %d epochs, batch %d, device %s",
+             args.epochs, args.batch_size, args.device)
     best_miou = -1.0
     history = []
     for epoch in range(1, args.epochs + 1):
