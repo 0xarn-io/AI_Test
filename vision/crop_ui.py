@@ -63,6 +63,10 @@ class CropApp:
                     "Round target W/H down to nearest multiple of 32 (CNN-friendly)"
                 )
 
+            with ui.row().classes("w-full items-end gap-2"):
+                self.manual_roi = ui.input("Manual ROI (x,y,w,h)").classes("flex-grow")
+                ui.button("Apply", on_click=self._apply_manual_roi).props("flat")
+
             with ui.row().classes("w-full gap-6 flex-wrap"):
                 with ui.column().classes("flex-grow min-w-[400px]"):
                     ui.label("Example (click to place ROI)").classes("text-sm font-semibold")
@@ -135,6 +139,25 @@ class CropApp:
         elif len(self.corners) > 2:
             self.corners = [self.corners[-1]]
         self._recompute()
+
+    def _apply_manual_roi(self) -> None:
+        if self.example is None:
+            ui.notify("Upload an example image first.", type="warning")
+            return
+        try:
+            roi = Roi.parse(self.manual_roi.value or "")
+        except (ValueError, TypeError) as exc:
+            ui.notify(f"Bad ROI: {exc}", type="negative")
+            return
+        h, w = self.example.shape[:2]
+        if roi.x + roi.w > w or roi.y + roi.h > h:
+            ui.notify(f"ROI exceeds image {w}x{h}", type="negative")
+            return
+        self.roi = roi
+        self.target_w.value = roi.w
+        self.target_h.value = roi.h
+        self.corners = [(roi.x + roi.w // 2, roi.y + roi.h // 2)]
+        self._render()
 
     def _snap_to_32(self) -> None:
         self.target_w.value = max(32, int(self.target_w.value) // 32 * 32)
